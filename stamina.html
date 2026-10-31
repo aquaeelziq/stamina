@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>體力視覺化</title>
+<style>
+  :root { --bar-h: 72dvh; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #0d1117; color: #e6edf3;
+    font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
+    touch-action: none; overscroll-behavior: none;
+  }
+  #app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  #label { font-size: 15vw; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 2.2dvh; transition: color .2s; }
+  #label small { font-size: .45em; opacity: .7; }
+  #bar {
+    position: relative; width: min(22vw, 110px); height: var(--bar-h);
+    border-radius: 999px; background: #1b222c; border: 3px solid #2d3748; overflow: hidden;
+    box-shadow: inset 0 0 18px rgba(0,0,0,.6);
+  }
+  #fill { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; border-radius: 0 0 999px 999px; transition: background-color .15s; }
+  #fill::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px; background: rgba(255,255,255,.35); }
+  #target { position: absolute; left: -4px; right: -4px; height: 3px; background: #fff; opacity: 0; transition: opacity .2s; box-shadow: 0 0 8px #fff; }
+  .tick { position: absolute; left: 0; width: 22%; height: 2px; background: rgba(255,255,255,.25); }
+
+  #zone { position: fixed; left: 0; top: 25dvh; height: 50dvh; width: 40vw; z-index: 5; touch-action: none; }
+  #finger { position: fixed; left: 0; top: 0; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%;
+    background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.35); pointer-events: none; opacity: 0; z-index: 6; }
+  #hint { position: fixed; left: 3vw; top: 25dvh; height: 50dvh; width: 8px; border-radius: 4px; z-index: 4;
+    background: linear-gradient(#ffffff40, #ffffff10); pointer-events: none; transition: opacity 1s; }
+  #hintText { position: fixed; left: 0; right: 0; bottom: 5dvh; text-align: center; font-size: 4vw; opacity: .6; transition: opacity 1s; pointer-events: none; z-index: 4; }
+  body.touched #hint, body.touched #hintText { opacity: 0; }
+
+  #alarm { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 8;
+    background: radial-gradient(ellipse at center, rgba(255,0,0,.35) 0%, rgba(255,0,0,.75) 100%); mix-blend-mode: normal; }
+  #viruses { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
+  #reset { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 20; font-size: 13px; padding: 6px 12px;
+    color: #e6edf3; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="label">100<small>%</small></div>
+  <div id="bar">
+    <div id="fill"></div>
+    <div id="target"></div>
+  </div>
+</div>
+<div id="hint"></div>
+<div id="hintText">在左側按住並上下滑動來調整體力</div>
+<div id="zone"></div>
+<div id="finger"></div>
+<div id="alarm"></div>
+<canvas id="viruses"></canvas>
+<button id="reset">重置</button>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const fill = $('fill'), label = $('label'), alarm = $('alarm'), zone = $('zone'),
+        finger = $('finger'), targetEl = $('target'), bar = $('bar');
+  const cv = $('viruses'), ctx = cv.getContext('2d');
+
+  // ---- bar ticks ----
+  [25, 50, 75].forEach(p => {
+    const t = document.createElement('div'); t.className = 'tick'; t.style.top = (100 - p) + '%'; bar.appendChild(t);
+  });
+
+  // ---- state ----
+  const SPEED = 18;            // 每秒變化的百分比
+  let stamina = 100;           // 目前體力
+  let target = null;           // 觸控目標 (null = 無觸控)
+  let activeId = null;
+
+  // ---- touch input (左側 無段) ----
+  function setFromPointer(e) {
+    const r = zone.getBoundingClientRect();
+    const v = (1 - (e.clientY - r.top) / r.height) * 100;
+    target = Math.max(0, Math.min(100, v));
+    finger.style.left = e.clientX + 'px';
+    finger.style.top = e.clientY + 'px';
+    const br = bar.getBoundingClientRect();
+    targetEl.style.top = (br.height * (1 - target / 100) - 1.5) + 'px';
+  }
+  function end(e) {
+    if (e.pointerId !== activeId) return;
+    activeId = null; target = null;
+    finger.style.opacity = 0; targetEl.style.opacity = 0;
+  }
+  zone.addEventListener('pointerdown', e => {
+    if (activeId !== null) return;
+    activeId = e.pointerId; zone.setPointerCapture(e.pointerId);
+    document.body.classList.add('touched');
+    finger.style.opacity = 1; targetEl.style.opacity = 1;
+    setFromPointer(e); initAudio();
+  });
+  zone.addEventListener('pointermove', e => { if (e.pointerId === activeId) setFromPointer(e); });
+  zone.addEventListener('pointerup', end);
+  zone.addEventListener('pointercancel', end);
+  $('reset').addEventListener('click', () => { stamina = 100; initAudio(); });
+  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // ---- audio ----
+  let ac = null, osc = null, gain = null;
+  function initAudio() {
+    try {
+      if (!ac) {
+        ac = new (window.AudioContext || window.webkitAudioContext)();
+        osc = ac.createOscillator(); gain = ac.createGain();
+        osc.type = 'square'; osc.frequency.value = 880; gain.gain.value = 0;
+        osc.connect(gain).connect(ac.destination); osc.start();
+      }
+      if (ac.state === 'suspended') ac.resume();
+    } catch (_) {}
+  }
+  function setSiren(on, vol, hiPitch) {
+    if (!ac) return;
+    const t = ac.currentTime;
+    gain.gain.setTargetAtTime(on ? vol : 0, t, 0.008);
+    osc.frequency.setTargetAtTime(hiPitch ? 1040 : 780, t, 0.01);
+  }
+
+  // ---- viruses ----
+  let viruses = [], virusFade = 0, zeroTime = 0;
+  function resize() {
+    const d = window.devicePixelRatio || 1;
+    cv.width = innerWidth * d; cv.height = innerHeight * d;
+    ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  addEventListener('resize', resize); resize();
+
+  const PALETTE = [['#7ddc3c', '#3f8f1a'], ['#b768e8', '#6d2e9c'], ['#5fd3c4', '#1f8a7d'], ['#ffd23f', '#c48a00']];
+  function spawnVirus() {
+    const r = 22 + Math.random() * 34;
+    const edge = Math.random() * 4 | 0;
+    let x, y;
+    if (edge === 0) { x = Math.random() * innerWidth; y = -r; }
+    else if (edge === 1) { x = Math.random() * innerWidth; y = innerHeight + r; }
+    else if (edge === 2) { x = -r; y = Math.random() * innerHeight; }
+    else { x = innerWidth + r; y = Math.random() * innerHeight; }
+    const a = Math.atan2(innerHeight / 2 - y, innerWidth / 2 - x) + (Math.random() - .5) * 1.6;
+    const s = 40 + Math.random() * 90;
+    viruses.push({ x, y, r, vx: Math.cos(a) * s, vy: Math.sin(a) * s, rot: Math.random() * 6.28,
+      vr: (Math.random() - .5) * 2, ph: Math.random() * 6.28, c: PALETTE[Math.random() * PALETTE.length | 0],
+      spikes: 8 + (Math.random() * 5 | 0) });
+  }
+  function drawVirus(v, t) {
+    const [c1, c2] = v.c, wob = 1 + Math.sin(t * 6 + v.ph) * 0.06;
+    ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(v.rot); ctx.scale(wob, 2 - wob);
+    // spikes
+    ctx.strokeStyle = c2; ctx.fillStyle = c2; ctx.lineWidth = v.r * 0.14; ctx.lineCap = 'round';
+    for (let i = 0; i < v.spikes; i++) {
+      const a = i / v.spikes * 6.283, ex = Math.cos(a) * v.r * 1.45, ey = Math.sin(a) * v.r * 1.45;
+      ctx.beginPath(); ctx.moveTo(Math.cos(a) * v.r * .8, Math.sin(a) * v.r * .8); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.beginPath(); ctx.arc(ex, ey, v.r * .17, 0, 6.283); ctx.fill();
+    }
+    // body
+    const g = ctx.createRadialGradient(-v.r * .3, -v.r * .3, v.r * .1, 0, 0, v.r);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.fillStyle = g; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = v.r * .07;
+    ctx.beginPath(); ctx.arc(0, 0, v.r, 0, 6.283); ctx.fill(); ctx.stroke();
+    // 臉部維持直立：抵銷旋轉
+    ctx.rotate(-v.rot);
+    const ex = v.r * .35, ey = -v.r * .15, er = v.r * .26;
+    for (const sx of [-1, 1]) {
+      ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * ex, ey, er, 0, 6.283); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#111'; ctx.beginPath();
+      ctx.arc(sx * ex + Math.cos(t * 3 + v.ph) * er * .3, ey + Math.sin(t * 4 + v.ph) * er * .3, er * .42, 0, 6.283); ctx.fill();
+    }
+    // 生氣眉毛
+    ctx.lineWidth = v.r * .09; ctx.beginPath();
+    ctx.moveTo(-ex - er, ey - er * 1.3); ctx.lineTo(-ex + er * .9, ey - er * .8);
+    ctx.moveTo(ex + er, ey - er * 1.3); ctx.lineTo(ex - er * .9, ey - er * .8); ctx.stroke();
+    // 嘴巴
+    ctx.fillStyle = '#4a0a14'; ctx.beginPath();
+    ctx.ellipse(0, v.r * .42, v.r * .38, v.r * (.12 + .1 * Math.abs(Math.sin(t * 5 + v.ph))), 0, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.fillRect(-v.r * .12, v.r * .32, v.r * .09, v.r * .09); ctx.fillRect(v.r * .06, v.r * .32, v.r * .09, v.r * .09);
+    ctx.restore();
+  }
+
+  // ---- main loop ----
+  let last = performance.now(), phase = 0, flashSm = 0, spawnAcc = 0;
+  function colorFor(p) {
+    const h = Math.max(0, Math.min(120, p * 1.2));   // 100% 綠 → 0% 紅
+    return `hsl(${h} 80% 50%)`;
+  }
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    const t = now / 1000;
+
+    // 體力朝目標移動
+    if (target !== null) {
+      const d = target - stamina, step = SPEED * dt;
+      stamina = Math.abs(d) <= step ? target : stamina + Math.sign(d) * step;
+    }
+    stamina = Math.max(0, Math.min(100, stamina));
+
+    fill.style.height = stamina + '%';
+    fill.style.backgroundColor = colorFor(stamina);
+    label.firstChild.nodeValue = Math.round(stamina);
+    label.style.color = colorFor(stamina);
+
+    // 警示 (<10%)
+    if (stamina < 10) {
+      const danger = 1 - stamina / 10;                 // 0 → 1
+      const freq = 1.5 + danger * 7;                   // 閃爍 Hz
+      phase += dt * freq;
+      const on = (phase % 1) < 0.5;
+      const vol = 0.06 + danger * 0.54;
+      flashSm += ((on ? 1 : 0.12) - flashSm) * Math.min(1, dt * 30);
+      alarm.style.opacity = flashSm * (0.55 + 0.45 * danger);
+      setSiren(on, vol, (phase * 2 | 0) % 2 === 0);
+      if (navigator.vibrate && on && Math.floor(phase) !== Math.floor(phase - dt * freq)) navigator.vibrate(40);
+    } else {
+      alarm.style.opacity = 0; flashSm = 0; setSiren(false, 0, false);
+    }
+
+    // 0%：病毒
+    ctx.clearRect(0, 0, innerWidth, innerHeight);
+    if (stamina <= 0) {
+      zeroTime += dt; virusFade = Math.min(1, virusFade + dt * 3);
+      spawnAcc += dt * (4 + zeroTime * 1.5);
+      while (spawnAcc >= 1 && viruses.length < 60) { spawnAcc -= 1; spawnVirus(); }
+    } else {
+      zeroTime = 0; spawnAcc = 0; virusFade = Math.max(0, virusFade - dt * 2);
+      if (virusFade === 0) viruses.length = 0;
+    }
+    if (viruses.length) {
+      ctx.globalAlpha = virusFade;
+      for (const v of viruses) {
+        v.x += v.vx * dt; v.y += v.vy * dt; v.rot += v.vr * dt;
+        if (v.x < v.r && v.vx < 0 || v.x > innerWidth - v.r && v.vx > 0) v.vx *= -1;
+        if (v.y < v.r && v.vy < 0 || v.y > innerHeight - v.r && v.vy > 0) v.vy *= -1;
+        drawVirus(v, t);
+      }
+      ctx.globalAlpha = 1;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
