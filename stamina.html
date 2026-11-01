@@ -6,24 +6,28 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>體力視覺化</title>
 <style>
-  :root { --bar-h: 72dvh; }
+  :root {
+    --bar-h: 72dvh;
+    --bg: linear-gradient(90deg, #10301c 0%, #1b3524 47%, #1d1628 50%, #2c1640 53%, #2a1238 100%);
+    --bar-bg: #1b222c; --bar-border: #2d3748; --text: #e6edf3; --shadow: rgba(0,0,0,.6);
+  }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-user-select: none; user-select: none; }
+  input { -webkit-user-select: text; user-select: text; }
   html, body {
-    margin: 0; height: 100%; overflow: hidden; background: #0d1117; color: #e6edf3;
+    margin: 0; height: 100%; overflow: hidden; color: var(--text); background: var(--bg);
     font-family: -apple-system, "PingFang TC", "Noto Sans TC", sans-serif;
     touch-action: none; overscroll-behavior: none;
   }
-  #app { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-  #label { font-size: 15vw; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 2.2dvh; transition: color .2s; }
+  #app { position: fixed; inset: 0; z-index: 1; height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+  #label { font-size: 15vw; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; margin-bottom: 2.2dvh; transition: color .2s; text-shadow: 0 2px 8px var(--shadow); }
   #label small { font-size: .45em; opacity: .7; }
   #bar {
     position: relative; width: min(22vw, 110px); height: var(--bar-h);
-    border-radius: 999px; background: #1b222c; border: 3px solid #2d3748; overflow: hidden;
-    box-shadow: inset 0 0 18px rgba(0,0,0,.6);
+    border-radius: 999px; background: var(--bar-bg); border: 3px solid var(--bar-border); overflow: hidden;
+    box-shadow: inset 0 0 18px rgba(0,0,0,.6), 0 0 20px rgba(0,0,0,.5);
   }
   #fill { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; border-radius: 0 0 999px 999px; transition: background-color .15s; }
   #fill::after { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 6px; background: rgba(255,255,255,.35); }
-  #target { position: absolute; left: -4px; right: -4px; height: 3px; background: #fff; opacity: 0; transition: opacity .2s; box-shadow: 0 0 8px #fff; }
   .tick { position: absolute; left: 0; width: 22%; height: 2px; background: rgba(255,255,255,.25); }
 
   #zone { position: fixed; left: 0; top: 25dvh; height: 50dvh; width: 40vw; z-index: 5; touch-action: none; }
@@ -35,73 +39,217 @@
   body.touched #hint, body.touched #hintText { opacity: 0; }
 
   #alarm { position: fixed; inset: 0; pointer-events: none; opacity: 0; z-index: 8;
-    background: radial-gradient(ellipse at center, rgba(255,0,0,.35) 0%, rgba(255,0,0,.75) 100%); mix-blend-mode: normal; }
-  #viruses { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
-  #reset { position: fixed; top: max(10px, env(safe-area-inset-top)); right: 12px; z-index: 20; font-size: 13px; padding: 6px 12px;
-    color: #e6edf3; background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.2); border-radius: 999px; }
+    background: radial-gradient(ellipse at center, rgba(255,0,0,.35) 0%, rgba(255,0,0,.75) 100%); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+
+  .fab { position: fixed; top: max(10px, env(safe-area-inset-top)); z-index: 20; font-size: 13px; padding: 6px 12px; color: #e6edf3;
+    background: rgba(20,24,32,.7); border: 1px solid rgba(255,255,255,.25); border-radius: 999px; }
+  #reset { right: 12px; }
+  #gear { left: 12px; font-size: 16px; padding: 4px 11px; }
+
+  /* 設定面板 */
+  #panel { position: fixed; inset: 0; z-index: 30; display: flex; align-items: flex-end; background: rgba(0,0,0,.3); }
+  #panel[hidden] { display: none; }
+  #sheet { width: 100%; max-height: 68dvh; overflow-y: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y;
+    background: rgba(18,22,30,.97); color: #e6edf3; border-radius: 18px 18px 0 0; padding: 14px 16px calc(20px + env(safe-area-inset-bottom)); }
+  #sheet .hd { display: flex; justify-content: space-between; align-items: center; font-size: 18px; margin-bottom: 4px; }
+  #sheet button { font: inherit; color: inherit; }
+  #close { background: none; border: 0; font-size: 20px; padding: 4px 8px; }
+  #sheet section { padding: 12px 0; border-top: 1px solid rgba(255,255,255,.1); }
+  #sheet h3 { margin: 0 0 8px; font-size: 14px; font-weight: 600; opacity: .85; }
+  #sheet h3 small { font-weight: 400; opacity: .6; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  #vol { flex: 1; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip, .btn { padding: 7px 12px; font-size: 14px; border-radius: 999px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.18); }
+  .chip.on { background: #2f81f7; border-color: #2f81f7; color: #fff; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { font-weight: 500; opacity: .6; padding-bottom: 4px; text-align: center; }
+  td { padding: 3px 2px; text-align: center; }
+  td.lbl { text-align: left; }
+  td.lbl button { background: none; border: 0; padding: 6px 0; font-size: 13px; text-decoration: underline dotted; text-underline-offset: 3px; }
+  td input { width: 56px; padding: 6px 4px; font-size: 15px; text-align: center; color: #e6edf3;
+    background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.2); border-radius: 8px; }
 </style>
 </head>
 <body>
+<canvas id="scene"></canvas>
 <div id="app">
   <div id="label">100<small>%</small></div>
-  <div id="bar">
-    <div id="fill"></div>
-    <div id="target"></div>
-  </div>
+  <div id="bar"><div id="fill"></div></div>
 </div>
 <div id="hint"></div>
 <div id="hintText">在左側按住並上下滑動來調整體力</div>
 <div id="zone"></div>
 <div id="finger"></div>
 <div id="alarm"></div>
-<canvas id="viruses"></canvas>
-<button id="reset">重置</button>
+<button id="gear" class="fab" aria-label="設定">⚙︎</button>
+<button id="reset" class="fab">重置</button>
+
+<div id="panel" hidden>
+  <div id="sheet">
+    <div class="hd"><b>設定</b><button id="close" aria-label="關閉">✕</button></div>
+    <section>
+      <h3>警示音量 <small id="volv"></small></h3>
+      <div class="row"><input type="range" id="vol" min="0" max="100" step="5"><button id="vtest" class="btn">試聽</button></div>
+    </section>
+    <section><h3>色彩風格</h3><div class="chips" id="themes"></div></section>
+    <section><h3>士兵武器</h3><div class="chips" id="weapons"></div></section>
+    <section>
+      <h3>各狀態的士兵與病毒數量 <small>（點狀態名稱可預覽）</small></h3>
+      <table id="counts"></table>
+    </section>
+    <section><button id="restore" class="btn">還原預設值</button></section>
+  </div>
+</div>
 
 <script>
 (() => {
   const $ = id => document.getElementById(id);
   const fill = $('fill'), label = $('label'), alarm = $('alarm'), zone = $('zone'),
-        finger = $('finger'), targetEl = $('target'), bar = $('bar');
-  const cv = $('viruses'), ctx = cv.getContext('2d');
+        finger = $('finger'), bar = $('bar');
+  const cv = $('scene'), ctx = cv.getContext('2d');
+  const rnd = (a, b) => a + Math.random() * (b - a);
+  const rint = (a, b) => Math.floor(rnd(a, b + 1));
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-  // ---- bar ticks ----
   [25, 50, 75].forEach(p => {
     const t = document.createElement('div'); t.className = 'tick'; t.style.top = (100 - p) + '%'; bar.appendChild(t);
   });
 
+  // ================= 設定 =================
+  const STAGE_LABELS = ['90% 以上', '70–89%', '40–69%', '5–39%', '1–4%', '0%'];
+  const STAGE_PREVIEW = [100, 80, 55, 20, 3, 0];
+  const DEFAULTS = {
+    volume: 60, theme: 'classic', weapon: 'laser',
+    soldiers: [5, 5, 5, 5, 3, 0],
+    vmin: [0, 2, 6, 15, 42, 115],
+    vmax: [0, 3, 8, 20, 50, 115],
+  };
+  const STORE = 'staminaSettings.v1';
+  const clone = o => JSON.parse(JSON.stringify(o));
+  let S = clone(DEFAULTS);
+  try {
+    const o = JSON.parse(localStorage.getItem(STORE) || 'null');
+    if (o) for (const k in DEFAULTS) {
+      if (Array.isArray(DEFAULTS[k])) { if (Array.isArray(o[k]) && o[k].length === 6) S[k] = o[k].map(Number); }
+      else if (o[k] !== undefined) S[k] = o[k];
+    }
+  } catch (_) {}
+  const save = () => { try { localStorage.setItem(STORE, JSON.stringify(S)); } catch (_) {} };
+
+  const THEMES = {
+    classic: { name: '經典', bg: 'linear-gradient(90deg,#10301c 0%,#1b3524 47%,#1d1628 50%,#2c1640 53%,#2a1238 100%)',
+      barBg: '#1b222c', barBorder: '#2d3748', text: '#e6edf3', shadow: 'rgba(0,0,0,.6)',
+      barColor: p => `hsl(${clamp(p * 1.2, 0, 120)} 80% 50%)`,
+      soldier: { body: '#5b7a3a', helmet: '#3e5a2a', legs: '#3b4a2a' },
+      virus: [['#7ddc3c', '#3f8f1a'], ['#b768e8', '#6d2e9c'], ['#5fd3c4', '#1f8a7d'], ['#ffd23f', '#c48a00']] },
+    neon: { name: '霓虹', bg: 'linear-gradient(90deg,#001a2b 0%,#04283a 47%,#14041f 50%,#2a0540 53%,#3a0650 100%)',
+      barBg: '#0a0f1a', barBorder: '#00e5ff', text: '#e8fbff', shadow: 'rgba(0,229,255,.55)',
+      barColor: p => `hsl(${320 - p * 1.3} 100% 58%)`,
+      soldier: { body: '#1aa7c9', helmet: '#0b6e8a', legs: '#0a4a60' },
+      virus: [['#ff4df0', '#a0189a'], ['#a6ff00', '#5a9100'], ['#ff7a00', '#a03c00'], ['#7a5cff', '#3a22b0']] },
+    day: { name: '日間', bg: 'linear-gradient(90deg,#cfeccf 0%,#e3f4e1 47%,#ece4f2 50%,#decbee 53%,#d3b8e8 100%)',
+      barBg: '#cfd8e3', barBorder: '#8da0b8', text: '#1d2733', shadow: 'rgba(255,255,255,.8)',
+      barColor: p => `hsl(${clamp(p * 1.2, 0, 120)} 75% 42%)`,
+      soldier: { body: '#5b7a3a', helmet: '#3e5a2a', legs: '#3b4a2a' },
+      virus: [['#7ddc3c', '#3f8f1a'], ['#b768e8', '#6d2e9c'], ['#5fd3c4', '#1f8a7d'], ['#ffd23f', '#c48a00']] },
+    retro: { name: '復古綠', bg: 'linear-gradient(90deg,#052b10 0%,#04210c 47%,#020b03 50%,#03140a 100%)',
+      barBg: '#031007', barBorder: '#1c8a38', text: '#aaffbb', shadow: 'rgba(0,255,90,.4)',
+      barColor: p => `hsl(125 90% ${22 + p * 0.33}%)`,
+      soldier: { body: '#2fae4a', helmet: '#1d7a33', legs: '#145a24' },
+      virus: [['#5dff6a', '#128a2a'], ['#c8ff5a', '#6f9d12'], ['#2affb0', '#0c7a55'], ['#9cff9c', '#2e8f2e']] },
+  };
+  const theme = () => THEMES[S.theme] || THEMES.classic;
+  function applyTheme() {
+    const T = theme(), r = document.documentElement.style;
+    r.setProperty('--bg', T.bg); r.setProperty('--bar-bg', T.barBg); r.setProperty('--bar-border', T.barBorder);
+    r.setProperty('--text', T.text); r.setProperty('--shadow', T.shadow);
+  }
+
+  const WEAPONS = {
+    stone:  { name: '丟石頭', icon: '🪨', sp: 650,  cd: [0.6, 1.0] },
+    arrow:  { name: '射箭',   icon: '🏹', sp: 1100, cd: [0.5, 0.9] },
+    laser:  { name: '雷射槍', icon: '🔫', sp: 2000, cd: [0.35, 0.7] },
+    qigong: { name: '氣功',   icon: '🌀', sp: 600,  cd: [0.7, 1.1] },
+    katana: { name: '武士刀（近戰）', icon: '⚔️', melee: true, cd: [0.3, 0.5] },
+  };
+  const weapon = () => WEAPONS[S.weapon] || WEAPONS.laser;
+
+  // ---- 設定面板 UI ----
+  const panel = $('panel');
+  function buildChips(el, items, key) {
+    el.innerHTML = '';
+    for (const k in items) {
+      const b = document.createElement('button');
+      b.className = 'chip' + (S[key] === k ? ' on' : '');
+      b.textContent = (items[k].icon ? items[k].icon + ' ' : '') + items[k].name;
+      b.onclick = () => { S[key] = k; save(); applySettings(true); buildChips(el, items, key); };
+      el.appendChild(b);
+    }
+  }
+  function buildCounts() {
+    const t = $('counts');
+    t.innerHTML = '<tr><th style="text-align:left">狀態</th><th>士兵</th><th>病毒 最少</th><th>病毒 最多</th></tr>';
+    STAGE_LABELS.forEach((name, i) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td class="lbl"><button data-p="${STAGE_PREVIEW[i]}">${name}</button></td>
+        <td><input type="number" inputmode="numeric" min="0" max="8" data-k="soldiers" data-i="${i}"></td>
+        <td><input type="number" inputmode="numeric" min="0" max="150" data-k="vmin" data-i="${i}"></td>
+        <td><input type="number" inputmode="numeric" min="0" max="150" data-k="vmax" data-i="${i}"></td>`;
+      t.appendChild(tr);
+    });
+    t.querySelectorAll('button').forEach(b => b.onclick = () => { stamina = +b.dataset.p; target = null; });
+    t.querySelectorAll('input').forEach(inp => inp.onchange = () => {
+      const k = inp.dataset.k, i = +inp.dataset.i, max = k === 'soldiers' ? 8 : 150;
+      S[k][i] = clamp(Math.round(+inp.value) || 0, 0, max);
+      if (k === 'vmin' && S.vmax[i] < S[k][i]) S.vmax[i] = S[k][i];
+      if (k === 'vmax' && S.vmin[i] > S[k][i]) S.vmin[i] = S[k][i];
+      save(); syncInputs(); applySettings(true);
+    });
+  }
+  function syncInputs() {
+    $('counts').querySelectorAll('input').forEach(inp => { inp.value = S[inp.dataset.k][+inp.dataset.i]; });
+    $('vol').value = S.volume; $('volv').textContent = S.volume + '%';
+  }
+  let testUntil = 0;
+  $('vol').oninput = e => { S.volume = +e.target.value; $('volv').textContent = S.volume + '%'; save(); };
+  $('vtest').onclick = () => { initAudio(); testUntil = performance.now() + 700; };
+  $('restore').onclick = () => { S = clone(DEFAULTS); save(); syncInputs(); buildChips($('themes'), THEMES, 'theme'); buildChips($('weapons'), WEAPONS, 'weapon'); applySettings(true); };
+  $('gear').onclick = () => { panel.hidden = false; };
+  $('close').onclick = () => { panel.hidden = true; };
+  panel.addEventListener('click', e => { if (e.target === panel) panel.hidden = true; });
+  buildChips($('themes'), THEMES, 'theme'); buildChips($('weapons'), WEAPONS, 'weapon'); buildCounts(); syncInputs();
+
   // ---- state ----
-  const SPEED = 18;            // 每秒變化的百分比
-  let stamina = 100;           // 目前體力
-  let target = null;           // 觸控目標 (null = 無觸控)
+  const SPEED = 18;
+  let stamina = 100;
+  let target = null;
   let activeId = null;
 
-  // ---- touch input (左側 無段) ----
   function setFromPointer(e) {
     const r = zone.getBoundingClientRect();
-    const v = (1 - (e.clientY - r.top) / r.height) * 100;
-    target = Math.max(0, Math.min(100, v));
+    target = clamp((1 - (e.clientY - r.top) / r.height) * 100, 0, 100);
     finger.style.left = e.clientX + 'px';
     finger.style.top = e.clientY + 'px';
-    const br = bar.getBoundingClientRect();
-    targetEl.style.top = (br.height * (1 - target / 100) - 1.5) + 'px';
   }
   function end(e) {
     if (e.pointerId !== activeId) return;
     activeId = null; target = null;
-    finger.style.opacity = 0; targetEl.style.opacity = 0;
+    finger.style.opacity = 0;
   }
   zone.addEventListener('pointerdown', e => {
     if (activeId !== null) return;
     activeId = e.pointerId; zone.setPointerCapture(e.pointerId);
     document.body.classList.add('touched');
-    finger.style.opacity = 1; targetEl.style.opacity = 1;
+    finger.style.opacity = 1;
     setFromPointer(e); initAudio();
   });
   zone.addEventListener('pointermove', e => { if (e.pointerId === activeId) setFromPointer(e); });
   zone.addEventListener('pointerup', end);
   zone.addEventListener('pointercancel', end);
   $('reset').addEventListener('click', () => { stamina = 100; initAudio(); });
-  document.addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+  document.addEventListener('touchmove', e => { if (e.target.closest && e.target.closest('#sheet')) return; e.preventDefault(); }, { passive: false });
   document.addEventListener('contextmenu', e => e.preventDefault());
 
   // ---- audio ----
@@ -120,50 +268,212 @@
   function setSiren(on, vol, hiPitch) {
     if (!ac) return;
     const t = ac.currentTime;
-    gain.gain.setTargetAtTime(on ? vol : 0, t, 0.008);
+    gain.gain.setTargetAtTime(on ? Math.min(1, vol * S.volume / 60) : 0, t, 0.008);
     osc.frequency.setTargetAtTime(hiPitch ? 1040 : 780, t, 0.01);
   }
 
-  // ---- viruses ----
-  let viruses = [], virusFade = 0, zeroTime = 0;
+  // ================= 戰場：士兵(左) vs 病毒(右) =================
+  let W = innerWidth, H = innerHeight, K = 1, U = 38;
+  const slots = Array.from({ length: 8 }, () => ({ x: 0, y: 0, s: null, respawn: 0 }));
   function resize() {
     const d = window.devicePixelRatio || 1;
-    cv.width = innerWidth * d; cv.height = innerHeight * d;
-    ctx.setTransform(d, 0, 0, d, 0, 0);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
+    K = clamp(W / 390, 0.8, 1.3);
+    U = clamp(Math.min(W * 0.11, H * 0.05), 28, 48);
+    slots.forEach((sl, i) => { sl.x = W * (i % 2 ? 0.22 : 0.11); sl.y = H * (0.26 + 0.075 * i); });
   }
   addEventListener('resize', resize); resize();
 
-  const PALETTE = [['#7ddc3c', '#3f8f1a'], ['#b768e8', '#6d2e9c'], ['#5fd3c4', '#1f8a7d'], ['#ffd23f', '#c48a00']];
-  function spawnVirus() {
-    const r = 22 + Math.random() * 34;
-    const edge = Math.random() * 4 | 0;
-    let x, y;
-    if (edge === 0) { x = Math.random() * innerWidth; y = -r; }
-    else if (edge === 1) { x = Math.random() * innerWidth; y = innerHeight + r; }
-    else if (edge === 2) { x = -r; y = Math.random() * innerHeight; }
-    else { x = innerWidth + r; y = Math.random() * innerHeight; }
-    const a = Math.atan2(innerHeight / 2 - y, innerWidth / 2 - x) + (Math.random() - .5) * 1.6;
-    const s = 40 + Math.random() * 90;
-    viruses.push({ x, y, r, vx: Math.cos(a) * s, vy: Math.sin(a) * s, rot: Math.random() * 6.28,
-      vr: (Math.random() - .5) * 2, ph: Math.random() * 6.28, c: PALETTE[Math.random() * PALETTE.length | 0],
-      spikes: 8 + (Math.random() * 5 | 0) });
+  // 階段 0:≥90  1:70–89  2:40–69  3:5–39  4:1–4  5:0
+  const stageOf = p => { const r = Math.round(p); return r >= 90 ? 0 : r >= 70 ? 1 : r >= 40 ? 2 : r >= 5 ? 3 : r >= 1 ? 4 : 5; };
+  const SPAWN_CD = [0.7, 0.7, 0.35, 0.15, 0.1, 0.025];
+  const slotSet = n => n <= 0 ? [] : n === 1 ? [3] : Array.from({ length: n }, (_, k) => Math.round(k * 7 / (n - 1)));
+  let stage = 0, targetN = 0, spawnT = 0, popAcc = 0;
+  function enterStage(s) {
+    stage = s;
+    targetN = rint(S.vmin[s], Math.max(S.vmin[s], S.vmax[s]));
+    cv.style.zIndex = s === 5 ? 9 : 0;
   }
+  function applySettings(rerollN) {
+    applyTheme();
+    if (rerollN) enterStage(stage);
+    for (const sl of slots) if (sl.s && sl.s.dash) { if (sl.s.dash.v) sl.s.dash.v.targeted = false; sl.s.dash = null; }
+  }
+  applyTheme(); enterStage(0);
+
+  let viruses = [], bullets = [], effects = [];
+
+  function spawnVirus() {
+    const r = (stage === 5 ? rnd(26, 48) : stage === 4 ? rnd(16, 30) : rnd(14, 23)) * K;
+    const v = { x: 0, y: 0, r, vx: 0, vy: 0, rot: rnd(0, 6.28), vr: rnd(-1.5, 1.5), ph: rnd(0, 6.28),
+      ci: rint(0, 3), spikes: rint(8, 12), age: 0, dying: false, dt: 0,
+      targeted: false, killX: W + 999, leaker: false, ty: 0, wander: false };
+    if (stage >= 4) {
+      v.wander = true;
+      v.x = stage === 5 ? rnd(r, W - r) : rnd(W * 0.3, W - r);
+      v.y = rnd(r, H - r);
+      const a = rnd(0, 6.28), sp = rnd(30, 80);
+      v.vx = Math.cos(a) * sp; v.vy = Math.sin(a) * sp;
+    } else {
+      const m = Math.max(stage, 1);
+      v.x = W + r + rnd(0, W * 0.1); v.y = rnd(H * 0.1, H * 0.9);
+      v.vx = -[0, rnd(40, 55), rnd(45, 65), rnd(50, 75)][m];
+      if (m === 1) v.killX = rnd(0.80, 0.92) * W;
+      else if (m === 2) v.killX = rnd(0.55, 0.66) * W;
+      else if (Math.random() < 0.2) { v.leaker = true; v.vx = -rnd(80, 110); v.ty = slots[rint(0, 7)].y; }
+      else v.killX = rnd(0.5, 0.72) * W;
+    }
+    viruses.push(v);
+  }
+
+  function newSoldier(sl) {
+    return { slot: sl, x: sl.x, y: sl.y, state: 'alive', arrive: 0, dead: 0, cd: rnd(0, 0.5), recoil: 0, swing: 0, shake: 0, dash: null, ph: rnd(0, 6.28) };
+  }
+  function killSoldier(sl, replace) {
+    const s = sl.s; if (!s || s.state !== 'alive') return;
+    if (s.dash && s.dash.v) s.dash.v.targeted = false;
+    s.dash = null; s.state = 'dead'; s.dead = 0;
+    sl.respawn = replace ? (stage === 4 ? 2.5 : 2) : rnd(0, 0.6);
+  }
+  function popVirus(v) {
+    if (v.dying) return;
+    v.dying = true; v.dt = 0;
+    effects.push({ x: v.x, y: v.y, r: v.r, t: 0 });
+  }
+  function shoot(v, avail) {
+    const ready = avail.filter(s => s.cd <= 0 && !s.dash);
+    if (!ready.length) return;
+    const wp = weapon(), miss = stage === 4 && Math.random() < 0.55;
+    if (wp.melee) {
+      let s = ready[0];
+      for (const c of ready) if (Math.hypot(c.x - v.x, c.y - v.y) < Math.hypot(s.x - v.x, s.y - v.y)) s = c;
+      s.dash = { phase: 'go', v, miss }; v.targeted = true;
+      return;
+    }
+    const s = ready[rint(0, ready.length - 1)];
+    s.cd = rnd(wp.cd[0], wp.cd[1]) * (stage === 4 ? 0.55 : 1);
+    s.recoil = 0.12;
+    const sx = s.x + U * 1.0, sy = s.y - U, sp = wp.sp;
+    let dur = Math.hypot(v.x - sx, v.y - sy) / sp;
+    const tx = v.x + v.vx * dur, ty = v.y + v.vy * dur, dist = Math.hypot(tx - sx, ty - sy);
+    dur = Math.max(0.05, dist / sp);
+    bullets.push({ type: S.weapon, sx, sy, tx, ty, t: 0, dur, v, miss, arcH: Math.min(140, dist * 0.3) });
+    v.targeted = true;
+  }
+  function stepDash(s, dt, sl) {
+    const d = s.dash; let tx, ty, sp;
+    if (d.phase === 'go') {
+      const v = d.v; tx = v.x - v.r - U * 0.5; ty = v.y + U * 0.9; sp = 1100;
+      if (v.dying) d.phase = 'back';
+    }
+    if (d.phase === 'back') { tx = sl.x; ty = sl.y; sp = 800; }
+    const dx = tx - s.x, dy = ty - s.y, dist = Math.hypot(dx, dy), step = sp * dt;
+    if (dist <= step + 2) {
+      s.x = tx; s.y = ty;
+      if (d.phase === 'go') {
+        s.swing = 0.25; s.recoil = 0;
+        effects.push({ x: d.v.x, y: d.v.y, r: d.v.r, t: 0, slash: true });
+        if (!d.miss && !d.v.dying) popVirus(d.v); else d.v.targeted = false;
+        d.phase = 'back';
+      } else { s.dash = null; s.cd = stage === 4 ? rnd(0.1, 0.2) : rnd(0.3, 0.5); }
+    } else { s.x += dx / dist * step; s.y += dy / dist * step; }
+  }
+
+  function stepScene(dt, t) {
+    const st = stageOf(stamina);
+    if (st !== stage) enterStage(st);
+
+    // 士兵
+    const allowed = new Set(slotSet(S.soldiers[stage]));
+    slots.forEach((sl, i) => {
+      const ok = allowed.has(i), s = sl.s;
+      if (s) {
+        s.recoil = Math.max(0, s.recoil - dt); s.shake = Math.max(0, s.shake - dt); s.swing = Math.max(0, s.swing - dt);
+        if (s.state === 'alive') {
+          s.arrive = Math.min(1, s.arrive + dt * 1.5);
+          if (!ok) killSoldier(sl, false);
+          else if (s.dash) stepDash(s, dt, sl);
+          else { s.cd -= dt; s.x = sl.x; s.y = sl.y; }
+        } else { s.dead += dt; if (s.dead > 1.1) sl.s = null; }
+      } else if (ok) {
+        sl.respawn -= dt;
+        if (sl.respawn <= 0) sl.s = newSoldier(sl);
+      }
+    });
+    const avail = slots.map(sl => sl.s).filter(s => s && s.state === 'alive' && s.arrive >= 1);
+
+    // 病毒
+    for (const v of viruses) {
+      v.age += dt; v.rot += v.vr * dt;
+      if (v.dying) { v.dt += dt; continue; }
+      if (v.wander) {
+        v.x += v.vx * dt; v.y += v.vy * dt;
+        if (v.x < v.r && v.vx < 0) v.vx = Math.abs(v.vx);
+        if (v.x > W - v.r && v.vx > 0) v.vx = -Math.abs(v.vx);
+        if (v.y < v.r && v.vy < 0) v.vy = Math.abs(v.vy);
+        if (v.y > H - v.r && v.vy > 0) v.vy = -Math.abs(v.vy);
+      } else {
+        v.vy = v.leaker ? clamp((v.ty - v.y) * 0.6, -70, 70) : Math.cos(t * 2 + v.ph) * 18;
+        v.x += v.vx * dt; v.y += v.vy * dt;
+      }
+      if (!v.targeted && !v.leaker && v.age > 0.3 && v.x <= v.killX && avail.length) shoot(v, avail);
+      if (v.x < W * 0.45) {
+        for (const s of avail) {
+          if (s.dash) continue;
+          if (Math.abs(v.x - s.x) < v.r + U * 0.5 && Math.abs(v.y - (s.y - U * 0.8)) < v.r + U * 0.9) {
+            popVirus(v);
+            if (Math.random() < (stage === 4 ? 0.6 : 0.5)) killSoldier(s.slot, true); else s.shake = 0.5;
+            break;
+          }
+        }
+      }
+    }
+    viruses = viruses.filter(v => !(v.dying && v.dt > 0.28) && v.x > -v.r * 2);
+
+    // 投射物
+    for (const b of bullets) {
+      b.t += dt;
+      if (b.t >= b.dur) {
+        b.done = true;
+        if (!b.miss && !b.v.dying) popVirus(b.v); else b.v.targeted = false;
+      }
+    }
+    bullets = bullets.filter(b => !b.done);
+    for (const e of effects) e.t += dt;
+    effects = effects.filter(e => e.t < 0.35);
+
+    // 病毒數量控制
+    let alive = 0; for (const v of viruses) if (!v.dying) alive++;
+    if (alive > targetN) {
+      popAcc += (alive - targetN) * dt * 3;
+      while (popAcc >= 1) {
+        const pool = viruses.filter(v => !v.dying);
+        if (!pool.length) break;
+        popVirus(pool[rint(0, pool.length - 1)]); popAcc--;
+      }
+    } else popAcc = 0;
+    spawnT -= dt;
+    if (alive >= targetN && spawnT < 0) spawnT = 0;
+    for (let n = 0; alive < targetN && spawnT <= 0 && n < 6; n++) { spawnVirus(); alive++; spawnT += SPAWN_CD[stage]; }
+  }
+
+  // ---- 繪圖 ----
   function drawVirus(v, t) {
-    const [c1, c2] = v.c, wob = 1 + Math.sin(t * 6 + v.ph) * 0.06;
-    ctx.save(); ctx.translate(v.x, v.y); ctx.rotate(v.rot); ctx.scale(wob, 2 - wob);
-    // spikes
+    const [c1, c2] = theme().virus[v.ci], wob = 1 + Math.sin(t * 6 + v.ph) * 0.06;
+    let sc = Math.min(1, v.age / 0.25), alpha = 1;
+    if (v.dying) { const p = v.dt / 0.28; sc *= 1 + p * 0.8; alpha = 1 - p; }
+    ctx.save(); ctx.globalAlpha = alpha; ctx.translate(v.x, v.y); ctx.rotate(v.rot); ctx.scale(wob * sc, (2 - wob) * sc);
     ctx.strokeStyle = c2; ctx.fillStyle = c2; ctx.lineWidth = v.r * 0.14; ctx.lineCap = 'round';
     for (let i = 0; i < v.spikes; i++) {
       const a = i / v.spikes * 6.283, ex = Math.cos(a) * v.r * 1.45, ey = Math.sin(a) * v.r * 1.45;
       ctx.beginPath(); ctx.moveTo(Math.cos(a) * v.r * .8, Math.sin(a) * v.r * .8); ctx.lineTo(ex, ey); ctx.stroke();
       ctx.beginPath(); ctx.arc(ex, ey, v.r * .17, 0, 6.283); ctx.fill();
     }
-    // body
     const g = ctx.createRadialGradient(-v.r * .3, -v.r * .3, v.r * .1, 0, 0, v.r);
     g.addColorStop(0, c1); g.addColorStop(1, c2);
     ctx.fillStyle = g; ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = v.r * .07;
     ctx.beginPath(); ctx.arc(0, 0, v.r, 0, 6.283); ctx.fill(); ctx.stroke();
-    // 臉部維持直立：抵銷旋轉
     ctx.rotate(-v.rot);
     const ex = v.r * .35, ey = -v.r * .15, er = v.r * .26;
     for (const sx of [-1, 1]) {
@@ -171,43 +481,227 @@
       ctx.fillStyle = '#111'; ctx.beginPath();
       ctx.arc(sx * ex + Math.cos(t * 3 + v.ph) * er * .3, ey + Math.sin(t * 4 + v.ph) * er * .3, er * .42, 0, 6.283); ctx.fill();
     }
-    // 生氣眉毛
     ctx.lineWidth = v.r * .09; ctx.beginPath();
     ctx.moveTo(-ex - er, ey - er * 1.3); ctx.lineTo(-ex + er * .9, ey - er * .8);
     ctx.moveTo(ex + er, ey - er * 1.3); ctx.lineTo(ex - er * .9, ey - er * .8); ctx.stroke();
-    // 嘴巴
     ctx.fillStyle = '#4a0a14'; ctx.beginPath();
     ctx.ellipse(0, v.r * .42, v.r * .38, v.r * (.12 + .1 * Math.abs(Math.sin(t * 5 + v.ph))), 0, 0, 6.283); ctx.fill(); ctx.stroke();
     ctx.fillStyle = '#fff'; ctx.fillRect(-v.r * .12, v.r * .32, v.r * .09, v.r * .09); ctx.fillRect(v.r * .06, v.r * .32, v.r * .09, v.r * .09);
     ctx.restore();
   }
 
-  // ---- main loop ----
-  let last = performance.now(), phase = 0, flashSm = 0, spawnAcc = 0;
-  function colorFor(p) {
-    const h = Math.max(0, Math.min(120, p * 1.2));   // 100% 綠 → 0% 紅
-    return `hsl(${h} 80% 50%)`;
+  // 手持武器（座標系：原點在肩膀，+x 為瞄準方向）
+  function drawWeapon(wp, s, mood0) {
+    const u = U, key = S.weapon;
+    ctx.lineCap = 'round';
+    if (key === 'laser') {
+      ctx.fillStyle = '#3a4252'; ctx.fillRect(0, -.09 * u, .8 * u, .18 * u);
+      ctx.fillStyle = '#8fa0b3'; ctx.fillRect(.8 * u, -.05 * u, .2 * u, .1 * u);
+      ctx.fillStyle = '#ff3b5c'; ctx.fillRect(.15 * u, -.035 * u, .5 * u, .05 * u);
+      ctx.fillStyle = '#2b2f3a'; ctx.fillRect(-.02 * u, 0, .14 * u, .28 * u);
+      if (s.recoil > .06) {
+        ctx.fillStyle = 'rgba(255,59,92,.8)'; ctx.beginPath(); ctx.arc(1.08 * u, 0, .2 * u, 0, 6.283); ctx.fill();
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(1.08 * u, 0, .09 * u, 0, 6.283); ctx.fill();
+      }
+    } else if (key === 'arrow') {
+      const pull = (!mood0 && s.cd < .3 && s.recoil <= 0) ? .3 : 0, bx = .53 * u;
+      ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = .07 * u;
+      ctx.beginPath(); ctx.arc(.3 * u, 0, .5 * u, -1.1, 1.1); ctx.stroke();
+      const ty = .45 * u;
+      ctx.strokeStyle = '#e8e0cf'; ctx.lineWidth = .02 * u;
+      ctx.beginPath(); ctx.moveTo(bx, -ty); ctx.lineTo(bx - pull * u, 0); ctx.lineTo(bx, ty); ctx.stroke();
+      if (s.recoil <= 0) {
+        ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = .04 * u;
+        ctx.beginPath(); ctx.moveTo(bx - pull * u, 0); ctx.lineTo(1.0 * u, 0); ctx.stroke();
+        ctx.fillStyle = '#c8ccd2'; ctx.beginPath(); ctx.moveTo(1.0 * u, -.06 * u); ctx.lineTo(1.16 * u, 0); ctx.lineTo(1.0 * u, .06 * u); ctx.fill();
+      }
+    } else if (key === 'stone') {
+      if (s.recoil <= 0) {
+        ctx.fillStyle = '#9a9a9a'; ctx.strokeStyle = '#555'; ctx.lineWidth = .03 * u;
+        ctx.beginPath(); ctx.arc(.6 * u, -.02 * u, .13 * u, 0, 6.283); ctx.fill(); ctx.stroke();
+      }
+    } else if (key === 'qigong') {
+      if (!mood0) {
+        const ch = s.recoil > 0 ? 1.4 : clamp(1 - s.cd / .5, 0, 1), r = (.08 + .16 * ch) * u;
+        const g = ctx.createRadialGradient(.9 * u, 0, 0, .9 * u, 0, r * 2.2);
+        g.addColorStop(0, 'rgba(255,255,255,.95)'); g.addColorStop(.4, 'rgba(127,233,255,.7)'); g.addColorStop(1, 'rgba(127,233,255,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(.9 * u, 0, r * 2.2, 0, 6.283); ctx.fill();
+      }
+    } else if (key === 'katana') {
+      ctx.fillStyle = '#7a1f2b'; ctx.fillRect(.05 * u, -.05 * u, .3 * u, .1 * u);
+      ctx.fillStyle = '#c9a227'; ctx.fillRect(.35 * u, -.12 * u, .05 * u, .24 * u);
+      ctx.fillStyle = '#e8eef5'; ctx.beginPath();
+      ctx.moveTo(.4 * u, -.04 * u); ctx.lineTo(1.4 * u, -.04 * u); ctx.lineTo(1.55 * u, .0); ctx.lineTo(1.4 * u, .035 * u); ctx.lineTo(.4 * u, .035 * u); ctx.fill();
+    }
   }
+
+  function drawSoldier(s, t) {
+    const u = U, mood = Math.min(stage, 4), dead = s.state === 'dead', T = theme().soldier, key = S.weapon;
+    const a = dead ? Math.max(0, 1 - s.dead / 1.1) : s.arrive;
+    const ox = dead ? 0 : -(1 - s.arrive) * u * 2;
+    let jx = 0, jy = 0;
+    if (mood === 0 && !dead) jy = -Math.abs(Math.sin(t * 3 + s.ph)) * u * .12;
+    if ((mood === 4 || s.shake > 0) && !dead) jx = Math.sin(t * 50 + s.ph) * u * .05;
+    ctx.save(); ctx.globalAlpha = a;
+    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.beginPath(); ctx.ellipse(s.x + ox, s.y, u * .5, u * .14, 0, 0, 6.283); ctx.fill();
+    ctx.translate(s.x + ox + jx, s.y + jy);
+    if (dead) ctx.rotate(-Math.min(1.5, s.dead * 3));
+    else if (s.dash) ctx.rotate(.12);
+    ctx.lineJoin = 'round';
+    ctx.fillStyle = T.legs;
+    ctx.fillRect(-.3 * u, -.5 * u, .22 * u, .5 * u); ctx.fillRect(.08 * u, -.5 * u, .22 * u, .5 * u);
+    ctx.fillStyle = T.body; ctx.strokeStyle = '#1f2b14'; ctx.lineWidth = u * .05;
+    ctx.beginPath(); ctx.roundRect(-.4 * u, -1.25 * u, .8 * u, .8 * u, .14 * u); ctx.fill(); ctx.stroke();
+
+    // 手臂 + 武器
+    let ang = mood === 0 ? 1.25 : -0.03;
+    if (mood !== 0) {
+      if (key === 'stone') ang = s.recoil > 0 ? .25 : -.95;
+      else if (key === 'katana') ang = s.dash ? -.2 : s.swing > 0 ? -1.4 + (1 - s.swing / .25) * 2.2 : -.9;
+    }
+    ctx.save();
+    ctx.translate(.25 * u - (key === 'laser' ? s.recoil * u * 1.2 : 0), -.95 * u);
+    ctx.rotate(ang);
+    drawWeapon(weapon(), s, mood === 0);
+    ctx.strokeStyle = '#f1c9a0'; ctx.lineWidth = u * .15; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(.5 * u, 0); ctx.stroke();
+    ctx.restore();
+
+    // 頭 + 鋼盔
+    ctx.fillStyle = '#f1c9a0'; ctx.strokeStyle = '#1f2b14'; ctx.lineWidth = u * .05;
+    ctx.beginPath(); ctx.arc(0, -1.55 * u, .38 * u, 0, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = T.helmet;
+    ctx.beginPath(); ctx.arc(0, -1.6 * u, .43 * u, Math.PI, 6.283); ctx.fill(); ctx.stroke();
+    ctx.fillRect(-.48 * u, -1.62 * u, .96 * u, .07 * u);
+    if (key === 'katana') { ctx.fillStyle = '#d33'; ctx.fillRect(-.4 * u, -1.7 * u, .8 * u, .07 * u); }
+
+    // 臉
+    ctx.strokeStyle = '#2a1a10'; ctx.fillStyle = '#2a1a10'; ctx.lineWidth = u * .05; ctx.lineCap = 'round';
+    const ey = -1.5 * u;
+    if (dead) {
+      for (const sx of [-1, 1]) { const x = sx * .14 * u, d = .06 * u;
+        ctx.beginPath(); ctx.moveTo(x - d, ey - d); ctx.lineTo(x + d, ey + d); ctx.moveTo(x + d, ey - d); ctx.lineTo(x - d, ey + d); ctx.stroke(); }
+    } else if (mood === 0) {
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * .14 * u, ey + .03 * u, .07 * u, Math.PI, 6.283); ctx.stroke(); }
+      ctx.beginPath(); ctx.arc(0, -1.45 * u, .14 * u, .1, Math.PI - .1); ctx.stroke();
+    } else if (mood === 4) {
+      for (const sx of [-1, 1]) {
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(sx * .14 * u, ey, .1 * u, 0, 6.283); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = '#2a1a10'; ctx.beginPath(); ctx.arc(sx * .14 * u, ey, .04 * u, 0, 6.283); ctx.fill();
+      }
+      ctx.beginPath(); ctx.ellipse(0, -1.36 * u, .1 * u, .08 * u, 0, 0, 6.283); ctx.fill();
+    } else {
+      for (const sx of [-1, 1]) { ctx.beginPath(); ctx.arc(sx * .14 * u, ey, .05 * u, 0, 6.283); ctx.fill(); }
+      ctx.beginPath();
+      if (mood === 1) { ctx.moveTo(-.1 * u, -1.38 * u); ctx.lineTo(.1 * u, -1.4 * u); }
+      else if (mood === 2) { ctx.moveTo(-.1 * u, -1.37 * u); ctx.lineTo(.1 * u, -1.37 * u); }
+      else { ctx.arc(0, -1.3 * u, .1 * u, Math.PI + .3, 6.283 - .3); }
+      ctx.stroke();
+      if (mood === 3) {
+        ctx.beginPath(); ctx.moveTo(-.24 * u, ey - .12 * u); ctx.lineTo(-.08 * u, ey - .17 * u);
+        ctx.moveTo(.24 * u, ey - .12 * u); ctx.lineTo(.08 * u, ey - .17 * u); ctx.stroke();
+      }
+    }
+    if (!dead && mood >= 2) {
+      const n = mood === 2 ? 1 : mood === 3 ? 2 : 3;
+      for (let k = 0; k < n; k++) {
+        const fr = (t * (mood === 4 ? 2 : 1.2) + s.ph + k * .37) % 1;
+        ctx.fillStyle = `rgba(130,205,255,${1 - fr})`;
+        ctx.beginPath(); ctx.arc((k % 2 ? -.5 : .5) * u, -1.85 * u + fr * .7 * u, .06 * u, 0, 6.283); ctx.fill();
+      }
+    }
+    if (!dead && mood === 0) {
+      ctx.font = `${u * .55}px sans-serif`;
+      for (let k = 0; k < 2; k++) {
+        const fr = (t * .5 + s.ph + k * .5) % 1;
+        ctx.fillStyle = `rgba(255,230,120,${1 - fr})`;
+        ctx.fillText('♪', -.1 * u + Math.sin(fr * 6 + k * 3) * .25 * u, -2 * u - fr * .8 * u);
+      }
+    }
+    ctx.restore();
+  }
+
+  function bulletPos(b, p) {
+    let x = b.sx + (b.tx - b.sx) * p, y = b.sy + (b.ty - b.sy) * p;
+    if (b.type === 'stone') y -= b.arcH * 4 * p * (1 - p);
+    return [x, y];
+  }
+  function drawBullet(b, t) {
+    const p = b.t / b.dur, [x, y] = bulletPos(b, p), u = U;
+    const [x2, y2] = bulletPos(b, Math.min(1, p + .02));
+    const ang = Math.atan2(y2 - y, x2 - x) || Math.atan2(b.ty - b.sy, b.tx - b.sx);
+    ctx.save(); ctx.lineCap = 'round';
+    if (b.type === 'laser') {
+      const dx = Math.cos(ang) * 46, dy = Math.sin(ang) * 46;
+      for (const [w, c] of [[8, 'rgba(255,59,92,.3)'], [3.5, '#ff3b5c'], [1.3, '#fff']]) {
+        ctx.strokeStyle = c; ctx.lineWidth = w; ctx.beginPath(); ctx.moveTo(x - dx, y - dy); ctx.lineTo(x, y); ctx.stroke();
+      }
+    } else if (b.type === 'arrow') {
+      ctx.translate(x, y); ctx.rotate(ang);
+      ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(-.9 * u, 0); ctx.lineTo(0, 0); ctx.stroke();
+      ctx.strokeStyle = '#eee'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-.9 * u, 0); ctx.lineTo(-1.0 * u, -.1 * u); ctx.moveTo(-.9 * u, 0); ctx.lineTo(-1.0 * u, .1 * u); ctx.stroke();
+      ctx.fillStyle = '#c8ccd2'; ctx.beginPath(); ctx.moveTo(0, -.07 * u); ctx.lineTo(.2 * u, 0); ctx.lineTo(0, .07 * u); ctx.fill();
+    } else if (b.type === 'stone') {
+      ctx.translate(x, y); ctx.rotate(t * 14);
+      ctx.fillStyle = '#9a9a9a'; ctx.strokeStyle = '#555'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(-.14 * u, -.04 * u); ctx.lineTo(-.04 * u, -.14 * u); ctx.lineTo(.12 * u, -.08 * u);
+      ctx.lineTo(.14 * u, .08 * u); ctx.lineTo(0, .14 * u); ctx.lineTo(-.12 * u, .08 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (b.type === 'qigong') {
+      for (let k = 4; k >= 0; k--) {
+        const [px, py] = bulletPos(b, Math.max(0, p - k * .05)), r = u * (.3 - k * .04) * (1 + .15 * Math.sin(t * 30));
+        const g = ctx.createRadialGradient(px, py, 0, px, py, r * 1.8);
+        g.addColorStop(0, `rgba(255,255,255,${.95 - k * .17})`); g.addColorStop(.4, `rgba(127,233,255,${.7 - k * .12})`); g.addColorStop(1, 'rgba(127,233,255,0)');
+        ctx.fillStyle = g; ctx.beginPath(); ctx.arc(px, py, r * 1.8, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawScene(t) {
+    ctx.clearRect(0, 0, W, H);
+    for (const v of viruses) drawVirus(v, t);
+    for (const b of bullets) drawBullet(b, t);
+    for (const sl of slots) if (sl.s) drawSoldier(sl.s, t);
+    ctx.lineCap = 'round';
+    for (const e of effects) {
+      const p = e.t / 0.35;
+      if (e.slash) {
+        const d = e.r * 1.8;
+        ctx.strokeStyle = `rgba(255,255,255,${1 - p})`; ctx.lineWidth = 5 * (1 - p) + 1;
+        ctx.beginPath(); ctx.moveTo(e.x - d, e.y - d); ctx.lineTo(e.x + d, e.y + d); ctx.stroke();
+      }
+      ctx.strokeStyle = `rgba(255,255,255,${1 - p})`; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(e.x, e.y, e.r * (1 + p * 1.6), 0, 6.283); ctx.stroke();
+      ctx.fillStyle = `rgba(255,240,150,${1 - p})`;
+      for (let i = 0; i < 6; i++) {
+        const a = i / 6 * 6.283, d = e.r * (.8 + p * 2.2);
+        ctx.beginPath(); ctx.arc(e.x + Math.cos(a) * d, e.y + Math.sin(a) * d, 3 * (1 - p), 0, 6.283); ctx.fill();
+      }
+    }
+  }
+
+  // ---- main loop ----
+  let last = performance.now(), phase = 0, flashSm = 0;
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
     const t = now / 1000;
 
-    // 體力朝目標移動
     if (target !== null) {
       const d = target - stamina, step = SPEED * dt;
       stamina = Math.abs(d) <= step ? target : stamina + Math.sign(d) * step;
     }
-    stamina = Math.max(0, Math.min(100, stamina));
+    stamina = clamp(stamina, 0, 100);
 
+    const col = theme().barColor(stamina);
     fill.style.height = stamina + '%';
-    fill.style.backgroundColor = colorFor(stamina);
+    fill.style.backgroundColor = col;
     label.firstChild.nodeValue = Math.round(stamina);
-    label.style.color = colorFor(stamina);
+    label.style.color = col;
 
-    // 警示 (<10%)
     if (stamina < 10) {
-      const danger = 1 - stamina / 10;                 // 0 → 1
-      const freq = 1.5 + danger * 7;                   // 閃爍 Hz
+      const danger = 1 - stamina / 10;
+      const freq = 1.5 + danger * 7;
       phase += dt * freq;
       const on = (phase % 1) < 0.5;
       const vol = 0.06 + danger * 0.54;
@@ -216,29 +710,12 @@
       setSiren(on, vol, (phase * 2 | 0) % 2 === 0);
       if (navigator.vibrate && on && Math.floor(phase) !== Math.floor(phase - dt * freq)) navigator.vibrate(40);
     } else {
-      alarm.style.opacity = 0; flashSm = 0; setSiren(false, 0, false);
+      alarm.style.opacity = 0; flashSm = 0;
+      if (now < testUntil) setSiren(true, 0.4, (now / 150 | 0) % 2 === 0); else setSiren(false, 0, false);
     }
 
-    // 0%：病毒
-    ctx.clearRect(0, 0, innerWidth, innerHeight);
-    if (stamina <= 0) {
-      zeroTime += dt; virusFade = Math.min(1, virusFade + dt * 3);
-      spawnAcc += dt * (4 + zeroTime * 1.5);
-      while (spawnAcc >= 1 && viruses.length < 60) { spawnAcc -= 1; spawnVirus(); }
-    } else {
-      zeroTime = 0; spawnAcc = 0; virusFade = Math.max(0, virusFade - dt * 2);
-      if (virusFade === 0) viruses.length = 0;
-    }
-    if (viruses.length) {
-      ctx.globalAlpha = virusFade;
-      for (const v of viruses) {
-        v.x += v.vx * dt; v.y += v.vy * dt; v.rot += v.vr * dt;
-        if (v.x < v.r && v.vx < 0 || v.x > innerWidth - v.r && v.vx > 0) v.vx *= -1;
-        if (v.y < v.r && v.vy < 0 || v.y > innerHeight - v.r && v.vy > 0) v.vy *= -1;
-        drawVirus(v, t);
-      }
-      ctx.globalAlpha = 1;
-    }
+    stepScene(dt, t);
+    drawScene(t);
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
